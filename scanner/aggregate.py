@@ -10,6 +10,61 @@ from .peptides import CATEGORY, GLP1, IS_PEPTIDE
 
 WEEK = 7 * 86400
 
+SHORT = {
+    "Semaglutide": "Sema", "Tirzepatide": "Tirz", "Retatrutide": "Reta", "Cagrilintide": "Cagri",
+    "Ipamorelin": "Ipa", "Tesamorelin": "Tesa", "Sermorelin": "Sermo", "CJC-1295": "CJC",
+    "Melanotan II": "MT2", "Melanotan I": "MT1", "Thymosin Alpha-1": "TA1", "GLP-1 (unspecified)": "GLP-1",
+    "HGH Fragment 176-191": "Frag", "Pentadeca Arginate": "PDA", "IGF-1 LR3": "LR3", "Liraglutide": "Lira",
+    "Mazdutide": "Mazdu", "Survodutide": "Survo", "Methylene Blue": "MB", "Glutathione": "GSH",
+}
+# community names for exact peptide sets
+KNOWN_STACKS = {
+    frozenset({"BPC-157", "TB-500"}): "Wolverine",
+    frozenset({"BPC-157", "TB-500", "GHK-Cu"}): "Glow",
+    frozenset({"BPC-157", "TB-500", "GHK-Cu", "KPV"}): "Klow",
+    frozenset({"CJC-1295", "Ipamorelin"}): "CJC/Ipa",
+    frozenset({"Tesamorelin", "Ipamorelin"}): "Tesa/Ipa",
+    frozenset({"Cagrilintide", "Semaglutide"}): "CagriSema",
+    frozenset({"Cagrilintide", "Retatrutide"}): "Reta/Cagri",
+    frozenset({"Semax", "Selank"}): "Semax/Selank",
+    frozenset({"Semaglutide", "Tirzepatide"}): "Sema/Tirz",
+    frozenset({"Retatrutide", "Tirzepatide"}): "Reta/Tirz",
+    frozenset({"BPC-157", "KPV"}): "BPC/KPV gut",
+    frozenset({"Epitalon", "GHK-Cu"}): "Epi/GHK anti-aging",
+    frozenset({"PT-141", "Melanotan II"}): "MT2/PT-141",
+    frozenset({"HCG", "Kisspeptin"}): "HCG/Kiss",
+    frozenset({"MOTS-c", "NAD+"}): "MOTS-c/NAD+",
+    frozenset({"CJC-1295", "Ipamorelin", "BPC-157", "TB-500"}): "Wolverine + CJC/Ipa",
+    frozenset({"Tesamorelin", "Ipamorelin", "BPC-157", "TB-500"}): "Wolverine + Tesa/Ipa",
+}
+CAT_SHORT = {GLP1: "GLP-1", "Healing / recovery": "Healing", "GH secretagogue": "GH", "Cognitive / mood": "Nootropic",
+             "Longevity / mitochondrial": "Longevity", "Sexual / tanning": "Libido", "Skin / hair / cosmetic": "Skin",
+             "Immune / gut": "Immune", "Sleep": "Sleep", "Hormonal": "Hormone", "Non-peptide adjunct": "Adjunct"}
+SIZE_WORD = {2: "duo", 3: "trio", 4: "quad"}
+
+
+def name_stack(peptides: list[str], observed: "Counter", goals: "Counter") -> dict:
+    """Return {name, kind, named}. Community name if known/observed, else short peptide names."""
+    key = frozenset(peptides)
+    cats = {CATEGORY.get(p, "Other") for p in peptides}
+    kind = (f"{CAT_SHORT.get(next(iter(cats)), 'Mixed')} {SIZE_WORD.get(len(peptides), 'stack')}" if len(cats) == 1
+            else f"{goals.most_common(1)[0][0]} stack" if goals else "Mixed stack")
+    if key in KNOWN_STACKS:
+        return {"name": KNOWN_STACKS[key], "kind": kind, "named": True}
+    # largest known subset + remainder
+    best = max((k for k in KNOWN_STACKS if k < key), key=len, default=None)
+    if best is not None:
+        rest = [SHORT.get(p, p) for p in peptides if p not in best]
+        tail = " + ".join(rest) if len(rest) <= 2 else f"{len(rest)} more"
+        return {"name": f"{KNOWN_STACKS[best]} + {tail}", "kind": kind, "named": True}
+    if observed:
+        blend = observed.most_common(1)[0][0]
+        return {"name": blend if len(peptides) <= 3 else f"{blend} + more", "kind": kind, "named": True}
+    shorts = [SHORT.get(p, p) for p in peptides]
+    name = " + ".join(shorts) if len(shorts) <= 3 else " + ".join(shorts[:2]) + f" + {len(shorts) - 2} more"
+    return {"name": name, "kind": kind, "named": False}
+
+
 GENERIC = {"GLP-1 (unspecified)": lambda ps: any(CATEGORY.get(p) == GLP1 and p != "GLP-1 (unspecified)" for p in ps),
            "IGF-1": lambda ps: "IGF-1 LR3" in ps or "IGF-1 DES" in ps}
 
@@ -76,21 +131,40 @@ def aggregate(records: list[dict], now_ts: int | None = None, max_stacks: int = 
         if len(r["peptides"]) >= 2:
             stack_docs[tuple(r["peptides"])].append(r)
     stacks = []
+    spark_weeks = 12
+    spark_start = now_ts - spark_weeks * WEEK
     for key, docs in stack_docs.items():
         ts = [d["ts"] for d in docs]
         recent, prior = _trend(now_ts, ts)
         goals = Counter(g for d in docs for g in d.get("goals", []))
+        observed = Counter(b for d in docs for b in d.get("blends", []))
+        naming = name_stack(list(key), observed, goals)
+        stack_doses = {}
+        for p in key:
+            ds = [d["doses"][p] for d in docs if p in d.get("doses", {})]
+            if ds:
+                stack_doses[p] = {"median_mcg": round(median(ds), 1), "n": len(ds)}
+        spark = [0] * spark_weeks
+        for t in ts:
+            if t >= spark_start:
+                spark[min(spark_weeks - 1, (t - spark_start) // WEEK)] += 1
         examples, seen_titles = [], set()
-        for d in sorted(docs, key=lambda d: (-d.get("score", 0), -d["ts"])):
+        for d in sorted(docs, key=lambda d: (-d["ts"] // 86400, -d.get("score", 0))):
             tkey = (d["title"] or d["snippet"][:60]).lower()
             if tkey in seen_titles:
                 continue
             seen_titles.add(tkey)
             examples.append(d)
-            if len(examples) == 3:
+            if len(examples) == 5:
                 break
         stacks.append({
             "peptides": list(key),
+            "name": naming["name"],
+            "kind": naming["kind"],
+            "named": naming["named"],
+            "aka": [b for b, _ in observed.most_common(3)],
+            "doses": stack_doses,
+            "spark": spark,
             "size": len(key),
             "docs": len(docs),
             "hinted": sum(1 for d in docs if d.get("stack_hint")),
@@ -98,7 +172,7 @@ def aggregate(records: list[dict], now_ts: int | None = None, max_stacks: int = 
             "prior_30d": prior,
             "goals": goals.most_common(3),
             "subs": Counter(d["sub"] for d in docs).most_common(3),
-            "examples": [{"url": e["url"], "title": e["title"] or e["snippet"][:80], "ts": e["ts"], "score": e.get("score", 0)} for e in examples],
+            "examples": [{"url": e["url"], "title": e["title"] or e["snippet"][:80], "ts": e["ts"], "score": e.get("score", 0), "sub": e["sub"], "snippet": e["snippet"][:200]} for e in examples],
             "last_seen": max(ts),
             "all_peptides": all(IS_PEPTIDE.get(p, True) for p in key),
         })
