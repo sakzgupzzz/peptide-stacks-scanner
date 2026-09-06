@@ -22,10 +22,9 @@ UA = os.environ.get(
 )
 
 SUBREDDITS = [
-    "Peptides", "PeptideGuide", "bpc_157", "PeptidesUncensored", "peptidesforwomen",
-    "Semaglutide", "tirzepatidecompound", "Retatrutide", "GLP1", "compoundedtirzepatide",
-    "Biohackers", "moreplatesmoredates", "PEDs", "steroids", "Nootropics", "longevity",
-    "Tesamorelin", "TRT", "Supplements", "PeptideSource", "glp1_stacks",
+    "Peptides", "PeptideGuide", "PeptideSource", "bpc_157", "Tesamorelin",
+    "Semaglutide", "tirzepatidecompound", "compoundedtirzepatide", "Retatrutide", "GLP1",
+    "Biohackers", "moreplatesmoredates", "PEDs", "Nootropics", "longevity", "TRT", "Supplements",
 ]
 
 SEARCH_TERMS = [
@@ -92,6 +91,7 @@ class RedditOAuth:
         self.token = None
 
     def available(self) -> bool:
+        log.info("reddit oauth creds present: id=%s secret=%s user=%s", bool(self.cid), bool(self.sec), bool(os.environ.get("REDDIT_USERNAME")))
         return bool(self.cid and self.sec)
 
     def auth(self) -> bool:
@@ -171,6 +171,7 @@ def _parse_atom(xml_text: str, sub: str) -> Iterator[dict]:
     for e in root.findall("a:entry", ATOM):
         eid = (e.findtext("a:id", default="", namespaces=ATOM) or "").strip()
         title = html.unescape(e.findtext("a:title", default="", namespaces=ATOM) or "")
+        title = re.sub(r"^/u/\S+ on ", "", title)  # comment feeds title entries "/u/name on <post title>"
         link_el = e.find("a:link", ATOM)
         url = link_el.attrib.get("href", "") if link_el is not None else ""
         content = e.findtext("a:content", default="", namespaces=ATOM) or ""

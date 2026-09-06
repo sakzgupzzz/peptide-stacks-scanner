@@ -26,6 +26,7 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt
       - name: Scan sources
+        timeout-minutes: 45
         env:
           # Optional but strongly recommended: a Reddit "script" app (free) at https://www.reddit.com/prefs/apps
           # Without these the scanner falls back to unauthenticated RSS feeds, which Reddit throttles/blocks on cloud IPs.
@@ -33,7 +34,7 @@ jobs:
           REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
           REDDIT_USERNAME: ${{ secrets.REDDIT_USERNAME }}
           REDDIT_PASSWORD: ${{ secrets.REDDIT_PASSWORD }}
-        run: python -m scanner.main
+        run: python -m scanner.main --no-pullpush   # pullpush.io returns 403 from GitHub runners
         continue-on-error: true
       - name: Rebuild data.json from corpus (in case scan aborted midway)
         run: python -m scanner.main --aggregate-only
