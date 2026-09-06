@@ -137,7 +137,7 @@ footer { margin-top: 28px; font-size: 12px; color: var(--muted); }
 
     <div class="card span2">
       <h2>Who gets stacked with whom</h2>
-      <div class="sub">Co-mention counts between the most common peptides. Darker = more posts.</div>
+      <div class="sub">Co-mention counts between the most common peptides. Stronger colour = more posts; hover a cell for the count.</div>
       <div id="heat" class="tbl-wrap"></div>
     </div>
 
@@ -297,15 +297,15 @@ footer { margin-top: 28px; font-size: 12px; color: var(--muted); }
     const max = Math.max(1, ...names.flatMap((_, i) => names.map((_, j) => i !== j ? M[i][j] : 0)));
     const steps = ['--seq1','--seq2','--seq3','--seq4','--seq5','--seq6','--seq7'];
     const col = v => v === 0 ? 'transparent' : `var(${steps[Math.min(6, Math.floor(Math.sqrt(v / max) * 6.99))]})`;
-    const cell = 26, lab = 110, W = lab + names.length * cell + 4, H = lab + names.length * cell + 4;
-    let svg = `<svg viewBox="0 0 ${W} ${H}" style="min-width:${Math.min(W, 640)}px" role="img" aria-label="Co-mention heatmap">`;
+    const cell = 24, lab = 132, W = lab + names.length * cell + 70, H = lab + names.length * cell + 4;
+    let svg = `<svg viewBox="0 0 ${W} ${H}" width="${W}" height="${H}" style="max-width:none" role="img" aria-label="Co-mention heatmap">`;
     names.forEach((nm, i) => {
       svg += `<text x="${lab - 6}" y="${lab + i * cell + cell / 2 + 4}" text-anchor="end" style="fill:var(--ink)">${esc(nm)}</text>`;
       svg += `<text transform="translate(${lab + i * cell + cell / 2 + 4},${lab - 6}) rotate(-60)" style="fill:var(--ink)">${esc(nm)}</text>`;
       names.forEach((_, j) => {
         const v = i === j ? null : M[i][j];
         svg += `<rect data-i="${i}" data-j="${j}" x="${lab + j * cell + 1}" y="${lab + i * cell + 1}" width="${cell - 2}" height="${cell - 2}" rx="3" fill="${v === null ? 'var(--grid)' : col(v)}" ${v === null ? 'fill-opacity="0.4"' : ''} stroke="var(--border)"/>`;
-        if (v && v >= max * 0.5) svg += `<text x="${lab + j * cell + cell / 2}" y="${lab + i * cell + cell / 2 + 4}" text-anchor="middle" style="fill:#fff;font-size:10px;pointer-events:none">${v}</text>`;
+        if (v && v >= max * 0.5) svg += `<text x="${lab + j * cell + cell / 2}" y="${lab + i * cell + cell / 2 + 4}" text-anchor="middle" style="fill:var(--page);font-size:10px;pointer-events:none">${v}</text>`;
       });
     });
     svg += '</svg>';

@@ -6,9 +6,21 @@ from collections import Counter, defaultdict
 from itertools import combinations
 from statistics import median
 
-from .peptides import CATEGORY, IS_PEPTIDE
+from .peptides import CATEGORY, GLP1, IS_PEPTIDE
 
 WEEK = 7 * 86400
+
+GENERIC = {"GLP-1 (unspecified)": lambda ps: any(CATEGORY.get(p) == GLP1 and p != "GLP-1 (unspecified)" for p in ps),
+           "IGF-1": lambda ps: "IGF-1 LR3" in ps or "IGF-1 DES" in ps}
+
+
+def normalize(rec: dict) -> dict:
+    """Drop class-level mentions when a specific member is present (idempotent, applied to old corpus rows too)."""
+    ps = rec.get("peptides") or []
+    drop = {g for g, cond in GENERIC.items() if g in ps and cond(ps)}
+    if drop:
+        rec = dict(rec, peptides=[p for p in ps if p not in drop])
+    return rec
 
 
 def _trend(now_ts: int, timestamps: list[int]) -> tuple[int, int]:
@@ -20,6 +32,7 @@ def _trend(now_ts: int, timestamps: list[int]) -> tuple[int, int]:
 
 def aggregate(records: list[dict], now_ts: int | None = None, max_stacks: int = 150, top_n: int = 25) -> dict:
     now_ts = now_ts or int(time.time())
+    records = [normalize(r) for r in records]
     records = [r for r in records if r.get("peptides")]
 
     # ---- per-peptide
@@ -67,7 +80,15 @@ def aggregate(records: list[dict], now_ts: int | None = None, max_stacks: int = 
         ts = [d["ts"] for d in docs]
         recent, prior = _trend(now_ts, ts)
         goals = Counter(g for d in docs for g in d.get("goals", []))
-        examples = sorted(docs, key=lambda d: (-d.get("score", 0), -d["ts"]))[:3]
+        examples, seen_titles = [], set()
+        for d in sorted(docs, key=lambda d: (-d.get("score", 0), -d["ts"])):
+            tkey = (d["title"] or d["snippet"][:60]).lower()
+            if tkey in seen_titles:
+                continue
+            seen_titles.add(tkey)
+            examples.append(d)
+            if len(examples) == 3:
+                break
         stacks.append({
             "peptides": list(key),
             "size": len(key),

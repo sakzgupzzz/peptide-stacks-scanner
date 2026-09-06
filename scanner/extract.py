@@ -4,7 +4,7 @@ from __future__ import annotations
 import re
 from statistics import median
 
-from .peptides import find_doses, find_mentions
+from .peptides import CATEGORY, GLP1 as GLP1_CAT, find_doses, find_mentions
 
 GOALS: dict[str, list[str]] = {
     "Fat loss": [r"fat loss", r"weight loss", r"lose (?:weight|fat)", r"cutting", r"\bcut\b", r"appetite", r"lbs? (?:down|lost)", r"obesity", r"body ?comp"],
@@ -39,6 +39,11 @@ def extract(doc: dict) -> dict | None:
         ds = find_doses(text, positions)
         if ds:
             doses[name] = round(median(ds), 1)
+    # generic class mentions add no stack information when a specific member is present
+    if "GLP-1 (unspecified)" in mentions and any(CATEGORY.get(n) == GLP1_CAT and n != "GLP-1 (unspecified)" for n in mentions):
+        mentions.pop("GLP-1 (unspecified)")
+    if "IGF-1" in mentions and any(n in mentions for n in ("IGF-1 LR3", "IGF-1 DES")):
+        mentions.pop("IGF-1")
     peptides = sorted(mentions)
     snippet = re.sub(r"\s+", " ", doc.get("text", "") or doc.get("title", "")).strip()[:280]
     return {
