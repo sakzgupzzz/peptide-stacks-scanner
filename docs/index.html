@@ -1,0 +1,356 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Peptide Stack Scanner</title>
+<meta name="description" content="What peptide stacks people are actually running, mined daily from public forum posts.">
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10); --good: #006300;
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s6:#008300; --s7:#4a3aa7; --s8:#e34948;
+  --seq1:#cde2fb; --seq2:#9ec5f4; --seq3:#6da7ec; --seq4:#3987e5; --seq5:#256abf; --seq6:#184f95; --seq7:#0d366b;
+  --chip: #eef2f7; --hover: rgba(11,11,11,0.04);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10); --good:#0ca30c;
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#008300; --s7:#9085e9; --s8:#e66767;
+    --seq1:#184f95; --seq2:#1c5cab; --seq3:#256abf; --seq4:#2a78d6; --seq5:#3987e5; --seq6:#6da7ec; --seq7:#9ec5f4;
+    --chip:#24262b; --hover: rgba(255,255,255,0.05);
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page:#0d0d0d; --surface:#1a1a19; --ink:#ffffff; --ink-2:#c3c2b7; --muted:#898781;
+  --grid:#2c2c2a; --axis:#383835; --border:rgba(255,255,255,0.10); --good:#0ca30c;
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#008300; --s7:#9085e9; --s8:#e66767;
+  --seq1:#184f95; --seq2:#1c5cab; --seq3:#256abf; --seq4:#2a78d6; --seq5:#3987e5; --seq6:#6da7ec; --seq7:#9ec5f4;
+  --chip:#24262b; --hover: rgba(255,255,255,0.05);
+}
+* { box-sizing: border-box; }
+body { margin:0; background:var(--page); color:var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: inherit; }
+.wrap { max-width: 1240px; margin: 0 auto; padding: 24px 20px 64px; }
+header { display:flex; flex-wrap:wrap; align-items:baseline; gap: 8px 20px; margin-bottom: 8px; }
+h1 { font-size: 24px; margin: 0; letter-spacing: -0.01em; }
+h1 span { color: var(--muted); font-weight: 400; }
+.meta { color: var(--ink-2); font-size: 13px; }
+.notice { font-size: 12.5px; color: var(--ink-2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; margin: 12px 0 20px; background: var(--surface); }
+.tiles { display:grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 10px; margin-bottom: 20px; }
+.tile { background: var(--surface); border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; }
+.tile .k { font-size: 12px; color: var(--muted); }
+.tile .v { font-size: 26px; font-weight: 600; margin-top: 2px; line-height: 1.1; }
+.tile .d { font-size: 12px; color: var(--ink-2); margin-top: 4px; }
+.up { color: var(--good); }
+.grid { display:grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 860px) { .grid { grid-template-columns: 1fr; } }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px 18px; margin-bottom: 16px; min-width: 0; }
+.card h2 { font-size: 15px; margin: 0 0 2px; }
+.card .sub { font-size: 12.5px; color: var(--muted); margin-bottom: 12px; }
+.span2 { grid-column: 1 / -1; }
+.filters { display:flex; flex-wrap:wrap; gap: 8px; align-items:center; margin-bottom: 12px; }
+.filters input, .filters select { font: inherit; padding: 6px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--page); color: var(--ink); }
+.filters label { font-size: 12.5px; color: var(--ink-2); display:flex; gap: 5px; align-items:center; }
+.tbl-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: left; padding: 7px 8px; border-bottom: 1px solid var(--grid); vertical-align: top; }
+th { font-size: 11.5px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; white-space: nowrap; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr:hover td { background: var(--hover); }
+.chip { display:inline-block; background: var(--chip); border-radius: 999px; padding: 2px 8px; font-size: 12px; margin: 1px 3px 1px 0; white-space: nowrap; }
+.chip.adj { border: 1px dashed var(--axis); background: transparent; color: var(--ink-2); }
+.chip.hl { outline: 2px solid var(--s1); }
+.goal { font-size: 11.5px; color: var(--ink-2); }
+.ex a { font-size: 12px; color: var(--ink-2); text-decoration: none; }
+.ex a:hover { text-decoration: underline; color: var(--ink); }
+.tip { position: fixed; pointer-events: none; background: var(--surface); color: var(--ink); border: 1px solid var(--border); box-shadow: 0 4px 16px rgba(0,0,0,.14); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; z-index: 50; max-width: 300px; display:none; }
+.tip b { font-weight: 600; }
+svg { display:block; max-width:100%; height:auto; }
+svg text { font-family: inherit; fill: var(--ink-2); font-size: 11.5px; }
+.legend { display:flex; flex-wrap:wrap; gap: 6px 14px; font-size: 12px; color: var(--ink-2); margin-top: 8px; }
+.legend i { display:inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.bar-row { cursor: default; }
+.feed { display:grid; gap: 10px; }
+.post { border: 1px solid var(--grid); border-radius: 10px; padding: 10px 12px; }
+.post .t { font-weight: 600; font-size: 13.5px; }
+.post .t a { text-decoration: none; }
+.post .t a:hover { text-decoration: underline; }
+.post .m { font-size: 12px; color: var(--muted); margin: 2px 0 6px; }
+.post .s { font-size: 12.5px; color: var(--ink-2); }
+.more { margin-top: 10px; font-size: 13px; background: none; border: 1px solid var(--border); color: var(--ink); border-radius: 8px; padding: 6px 12px; cursor: pointer; }
+.more:hover { background: var(--hover); }
+.goals { display:grid; grid-template-columns: repeat(auto-fill, minmax(230px,1fr)); gap: 10px; }
+.goalcard { border: 1px solid var(--grid); border-radius: 10px; padding: 10px 12px; }
+.goalcard h3 { margin: 0; font-size: 13.5px; }
+.goalcard .n { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
+.goalcard ol { margin: 0; padding-left: 18px; font-size: 12.5px; }
+.goalcard li { margin: 3px 0; }
+footer { margin-top: 28px; font-size: 12px; color: var(--muted); }
+#err { display:none; color: var(--s8); padding: 20px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Peptide Stack Scanner <span>· what people say they're running</span></h1>
+    <div class="meta" id="meta">loading…</div>
+  </header>
+  <div class="notice">Mined automatically from public posts (Reddit, Hacker News). A "stack" = two or more peptides mentioned in the same post or comment. Counts are mentions, not people, and say nothing about safety or efficacy. Not medical advice.</div>
+  <div id="err"></div>
+
+  <div class="tiles" id="tiles"></div>
+
+  <div class="grid">
+    <div class="card span2">
+      <h2>Top stacks</h2>
+      <div class="sub">Exact peptide combinations co-mentioned in one post or comment. "Hinted" = the text also used stack/protocol/cycle language.</div>
+      <div class="filters">
+        <input id="q" type="search" placeholder="filter by peptide (e.g. bpc)" size="26">
+        <select id="goal"><option value="">any goal</option></select>
+        <select id="size"><option value="2">2+ peptides</option><option value="3">3+ peptides</option><option value="4">4+ peptides</option></select>
+        <label><input type="checkbox" id="pepOnly"> peptides only (hide NAD+, MK-677, etc.)</label>
+        <label><input type="checkbox" id="hintOnly"> hinted only</label>
+        <label><input type="checkbox" id="recentOnly"> mentioned in last 30d</label>
+      </div>
+      <div class="tbl-wrap"><table id="stacks"><thead><tr>
+        <th>#</th><th>Stack</th><th class="num">Posts</th><th class="num">Hinted</th><th class="num">30d</th><th>Goals</th><th>Where</th><th>Example</th>
+      </tr></thead><tbody></tbody></table></div>
+      <button class="more" id="moreStacks">show more</button>
+    </div>
+
+    <div class="card">
+      <h2>Most-mentioned peptides</h2>
+      <div class="sub">Posts mentioning each compound. Dashed = non-peptide adjunct commonly stacked.</div>
+      <div id="leader"></div>
+    </div>
+
+    <div class="card">
+      <h2>Mentions per week</h2>
+      <div class="sub">Top peptides, last 26 weeks. Hover for values.</div>
+      <div id="timeline"></div>
+    </div>
+
+    <div class="card span2">
+      <h2>Who gets stacked with whom</h2>
+      <div class="sub">Co-mention counts between the most common peptides. Darker = more posts.</div>
+      <div id="heat" class="tbl-wrap"></div>
+    </div>
+
+    <div class="card">
+      <h2>Stacks by goal</h2>
+      <div class="sub">Goal inferred from keywords in the post. Top stacks per goal.</div>
+      <div class="goals" id="goals"></div>
+    </div>
+
+    <div class="card">
+      <h2>Peptide details</h2>
+      <div class="sub">Median self-reported dose (mcg) where a dose appeared right after the name; partners = most frequent co-mentions.</div>
+      <div class="tbl-wrap"><table id="peps"><thead><tr>
+        <th>Peptide</th><th>Category</th><th class="num">Posts</th><th class="num">30d Δ</th><th class="num">Median dose</th><th>Top partners</th>
+      </tr></thead><tbody></tbody></table></div>
+      <button class="more" id="morePeps">show more</button>
+    </div>
+
+    <div class="card span2">
+      <h2>Latest stack posts</h2>
+      <div class="sub">Newest posts and comments that mention two or more peptides.</div>
+      <div class="feed" id="feed"></div>
+      <button class="more" id="moreFeed">show more</button>
+    </div>
+  </div>
+
+  <footer id="foot"></footer>
+</div>
+<div class="tip" id="tip"></div>
+
+<script>
+(async function () {
+  const $ = (s) => document.querySelector(s);
+  const tip = $('#tip');
+  const SERIES = ['--s1','--s2','--s3','--s4','--s5','--s6','--s7','--s8'].map(v => `var(${v})`);
+  const fmtDate = (ts) => ts ? new Date(ts * 1000).toISOString().slice(0, 10) : '';
+  const ago = (ts) => { const d = (Date.now()/1000 - ts) / 86400; return d < 1 ? `${Math.max(1, Math.round(d*24))}h ago` : d < 30 ? `${Math.round(d)}d ago` : fmtDate(ts); };
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const showTip = (html, ev) => { tip.innerHTML = html; tip.style.display = 'block'; moveTip(ev); };
+  const moveTip = (ev) => { const x = ev.clientX + 14, y = ev.clientY + 14; tip.style.left = Math.min(x, innerWidth - tip.offsetWidth - 8) + 'px'; tip.style.top = Math.min(y, innerHeight - tip.offsetHeight - 8) + 'px'; };
+  const hideTip = () => { tip.style.display = 'none'; };
+
+  let data;
+  try {
+    const r = await fetch('data.json', { cache: 'no-store' });
+    if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+    data = await r.json();
+  } catch (e) {
+    $('#err').style.display = 'block';
+    $('#err').textContent = 'Could not load data.json (' + e.message + '). Run the scanner first.';
+    $('#meta').textContent = '';
+    return;
+  }
+  const isPep = Object.fromEntries(data.peptides.map(p => [p.name, p.is_peptide]));
+  const chip = (n, hl) => `<span class="chip${isPep[n] === false ? ' adj' : ''}${hl ? ' hl' : ''}">${esc(n)}</span>`;
+  const T = data.totals;
+  const now = data.generated_at;
+
+  $('#meta').textContent = `updated ${fmtDate(now)} · ${T.docs.toLocaleString()} posts scanned · window ${fmtDate(T.oldest)} → ${fmtDate(T.newest)}`;
+
+  // ---- tiles
+  const riser = data.risers[0];
+  const topPep = data.peptides[0];
+  const topStack = data.stacks[0];
+  const tiles = [
+    ['Posts with peptides', T.docs.toLocaleString(), Object.entries(T.sources).map(([k,v]) => `${k} ${v}`).join(' · ')],
+    ['Posts with a stack (2+)', T.stack_docs.toLocaleString(), `${Math.round(100 * T.stack_docs / Math.max(1, T.docs))}% of posts`],
+    ['Distinct stacks', T.distinct_stacks.toLocaleString(), `${T.distinct_peptides} compounds tracked`],
+    ['Most mentioned', topPep ? topPep.name : '—', topPep ? `${topPep.docs} posts` : ''],
+    ['Top stack', topStack ? topStack.peptides.join(' + ') : '—', topStack ? `${topStack.docs} posts` : ''],
+    ['Rising (30d)', riser ? riser.name : '—', riser ? `<span class="up">${riser.recent}</span> vs ${riser.prior} prior 30d` : ''],
+  ];
+  $('#tiles').innerHTML = tiles.map(([k, v, d]) => `<div class="tile"><div class="k">${k}</div><div class="v" style="font-size:${String(v).length > 22 ? 15 : String(v).length > 12 ? 19 : 26}px">${esc(v)}</div><div class="d">${d}</div></div>`).join('');
+
+  // ---- stacks table
+  const goalSel = $('#goal');
+  data.goals.forEach(g => { const o = document.createElement('option'); o.value = g.goal; o.textContent = `${g.goal} (${g.docs})`; goalSel.appendChild(o); });
+  let stackLimit = 25;
+  function renderStacks() {
+    const q = $('#q').value.trim().toLowerCase();
+    const goal = goalSel.value, minSize = +$('#size').value;
+    const pepOnly = $('#pepOnly').checked, hintOnly = $('#hintOnly').checked, recentOnly = $('#recentOnly').checked;
+    const rows = data.stacks.filter(s =>
+      s.size >= minSize && (!pepOnly || s.all_peptides) && (!hintOnly || s.hinted > 0) && (!recentOnly || s.recent_30d > 0)
+      && (!goal || s.goals.some(([g]) => g === goal)) && (!q || s.peptides.some(p => p.toLowerCase().includes(q))));
+    const tb = $('#stacks tbody');
+    tb.innerHTML = rows.slice(0, stackLimit).map((s, i) => `<tr>
+      <td class="num">${i + 1}</td>
+      <td>${s.peptides.map(p => chip(p, q && p.toLowerCase().includes(q))).join('')}</td>
+      <td class="num">${s.docs}</td><td class="num">${s.hinted}</td>
+      <td class="num">${s.recent_30d}${s.prior_30d ? `<span class="goal"> / ${s.prior_30d}</span>` : ''}</td>
+      <td class="goal">${s.goals.map(([g, n]) => `${esc(g)} (${n})`).join(', ') || '—'}</td>
+      <td class="goal">${s.subs.map(([g]) => 'r/' + esc(g)).join(', ')}</td>
+      <td class="ex">${s.examples.slice(0, 2).map(e => `<a href="${esc(e.url)}" target="_blank" rel="noopener" title="${esc(e.title)}">${esc((e.title || '').slice(0, 44) || 'link')}${e.title.length > 44 ? '…' : ''}</a>`).join('<br>')}</td>
+    </tr>`).join('') || '<tr><td colspan="8" style="color:var(--muted)">no stacks match</td></tr>';
+    $('#moreStacks').style.display = rows.length > stackLimit ? '' : 'none';
+    $('#moreStacks').textContent = `show more (${rows.length - stackLimit} more)`;
+  }
+  ['#q', '#goal', '#size', '#pepOnly', '#hintOnly', '#recentOnly'].forEach(s => $(s).addEventListener('input', () => { stackLimit = 25; renderStacks(); }));
+  $('#moreStacks').onclick = () => { stackLimit += 25; renderStacks(); };
+  renderStacks();
+
+  // ---- leaderboard (horizontal bars, single series)
+  (function () {
+    const rows = data.peptides.slice(0, 20);
+    const max = Math.max(1, ...rows.map(r => r.docs));
+    const W = 560, rowH = 22, labelW = 150, H = rows.length * rowH + 8;
+    let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Most mentioned peptides">`;
+    rows.forEach((r, i) => {
+      const y = i * rowH + 4, w = Math.max(2, (W - labelW - 50) * r.docs / max);
+      const dash = r.is_peptide ? '' : ' stroke="var(--s1)" stroke-dasharray="3 3" fill-opacity="0.35"';
+      svg += `<g class="bar-row" data-i="${i}"><rect x="0" y="${y}" width="${W}" height="${rowH}" fill="transparent"/>
+        <text x="${labelW - 8}" y="${y + 15}" text-anchor="end" style="fill:var(--ink)">${esc(r.name)}</text>
+        <rect x="${labelW}" y="${y + 4}" width="${w}" height="14" rx="4" fill="var(--s1)"${dash}/>
+        <text x="${labelW + w + 6}" y="${y + 15}" style="font-variant-numeric:tabular-nums">${r.docs}</text></g>`;
+    });
+    svg += '</svg>';
+    const el = $('#leader'); el.innerHTML = svg;
+    el.querySelectorAll('.bar-row').forEach(g => {
+      const r = rows[+g.dataset.i];
+      const html = `<b>${esc(r.name)}</b> · ${esc(r.category)}<br>${r.docs} posts · last 30d: ${r.recent_30d} (prior ${r.prior_30d})<br>${r.median_dose_mcg ? `median dose ${fmtDose(r.median_dose_mcg)} (n=${r.dose_samples})<br>` : ''}partners: ${r.top_partners.slice(0, 4).map(([n, c]) => `${esc(n)} ${c}`).join(', ') || '—'}`;
+      g.addEventListener('mouseenter', ev => showTip(html, ev)); g.addEventListener('mousemove', moveTip); g.addEventListener('mouseleave', hideTip);
+    });
+  })();
+  function fmtDose(mcg) { return mcg >= 1000 ? (mcg / 1000).toFixed(mcg % 1000 ? 2 : 0).replace(/\.?0+$/, '') + ' mg' : mcg + ' mcg'; }
+
+  // ---- timeline (multi-line, legend + crosshair)
+  (function () {
+    const tl = data.timeline, series = tl.series.slice(0, 8), n = tl.week_starts.length;
+    const W = 560, H = 240, padL = 34, padR = 12, padT = 10, padB = 26;
+    const max = Math.max(1, ...series.flatMap(s => s.values));
+    const x = i => padL + (W - padL - padR) * i / (n - 1), y = v => padT + (H - padT - padB) * (1 - v / max);
+    let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Weekly mentions of top peptides">`;
+    const ticks = 4;
+    for (let t = 0; t <= ticks; t++) { const v = Math.round(max * t / ticks), yy = y(v); svg += `<line x1="${padL}" x2="${W - padR}" y1="${yy}" y2="${yy}" stroke="var(--grid)"/><text x="${padL - 6}" y="${yy + 4}" text-anchor="end">${v}</text>`; }
+    for (let i = 0; i < n; i += 5) svg += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle">${fmtDate(tl.week_starts[i]).slice(5)}</text>`;
+    series.forEach((s, k) => {
+      const d = s.values.map((v, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join('');
+      svg += `<path d="${d}" fill="none" stroke="${SERIES[k]}" stroke-width="2" stroke-linejoin="round"/>`;
+    });
+    svg += `<line id="xh" x1="0" x2="0" y1="${padT}" y2="${H - padB}" stroke="var(--axis)" style="display:none"/><g id="dots"></g><rect id="hit" x="${padL}" y="0" width="${W - padL - padR}" height="${H}" fill="transparent"/></svg>`;
+    const el = $('#timeline'); el.innerHTML = svg + `<div class="legend">${series.map((s, k) => `<span><i style="background:${SERIES[k]}"></i>${esc(s.name)}</span>`).join('')}</div>`;
+    const svgEl = el.querySelector('svg'), hit = svgEl.querySelector('#hit'), xh = svgEl.querySelector('#xh'), dots = svgEl.querySelector('#dots');
+    hit.addEventListener('mousemove', ev => {
+      const pt = svgEl.createSVGPoint(); pt.x = ev.clientX; pt.y = ev.clientY; const p = pt.matrixTransform(svgEl.getScreenCTM().inverse());
+      const i = Math.max(0, Math.min(n - 1, Math.round((p.x - padL) / (W - padL - padR) * (n - 1))));
+      xh.setAttribute('x1', x(i)); xh.setAttribute('x2', x(i)); xh.style.display = '';
+      dots.innerHTML = series.map((s, k) => `<circle cx="${x(i)}" cy="${y(s.values[i])}" r="4" fill="${SERIES[k]}" stroke="var(--surface)" stroke-width="2"/>`).join('');
+      showTip(`<b>week of ${fmtDate(tl.week_starts[i])}</b> · ${tl.total[i]} posts<br>` + series.map((s, k) => `<i class="chip" style="background:${SERIES[k]};width:8px;height:8px;padding:0;display:inline-block;border-radius:2px;margin-right:6px"></i>${esc(s.name)}: ${s.values[i]}`).join('<br>'), ev);
+    });
+    hit.addEventListener('mouseleave', () => { xh.style.display = 'none'; dots.innerHTML = ''; hideTip(); });
+  })();
+
+  // ---- heatmap
+  (function () {
+    const names = data.pairs.names.slice(0, 18), M = data.pairs.matrix;
+    const max = Math.max(1, ...names.flatMap((_, i) => names.map((_, j) => i !== j ? M[i][j] : 0)));
+    const steps = ['--seq1','--seq2','--seq3','--seq4','--seq5','--seq6','--seq7'];
+    const col = v => v === 0 ? 'transparent' : `var(${steps[Math.min(6, Math.floor(Math.sqrt(v / max) * 6.99))]})`;
+    const cell = 26, lab = 110, W = lab + names.length * cell + 4, H = lab + names.length * cell + 4;
+    let svg = `<svg viewBox="0 0 ${W} ${H}" style="min-width:${Math.min(W, 640)}px" role="img" aria-label="Co-mention heatmap">`;
+    names.forEach((nm, i) => {
+      svg += `<text x="${lab - 6}" y="${lab + i * cell + cell / 2 + 4}" text-anchor="end" style="fill:var(--ink)">${esc(nm)}</text>`;
+      svg += `<text transform="translate(${lab + i * cell + cell / 2 + 4},${lab - 6}) rotate(-60)" style="fill:var(--ink)">${esc(nm)}</text>`;
+      names.forEach((_, j) => {
+        const v = i === j ? null : M[i][j];
+        svg += `<rect data-i="${i}" data-j="${j}" x="${lab + j * cell + 1}" y="${lab + i * cell + 1}" width="${cell - 2}" height="${cell - 2}" rx="3" fill="${v === null ? 'var(--grid)' : col(v)}" ${v === null ? 'fill-opacity="0.4"' : ''} stroke="var(--border)"/>`;
+        if (v && v >= max * 0.5) svg += `<text x="${lab + j * cell + cell / 2}" y="${lab + i * cell + cell / 2 + 4}" text-anchor="middle" style="fill:#fff;font-size:10px;pointer-events:none">${v}</text>`;
+      });
+    });
+    svg += '</svg>';
+    const el = $('#heat'); el.innerHTML = svg;
+    el.querySelectorAll('rect[data-i]').forEach(r => {
+      const i = +r.dataset.i, j = +r.dataset.j; if (i === j) return;
+      r.addEventListener('mouseenter', ev => showTip(`<b>${esc(names[i])}</b> + <b>${esc(names[j])}</b><br>${M[i][j]} posts mention both`, ev));
+      r.addEventListener('mousemove', moveTip); r.addEventListener('mouseleave', hideTip);
+    });
+  })();
+
+  // ---- goals
+  $('#goals').innerHTML = data.goals.slice(0, 10).map(g => `<div class="goalcard"><h3>${esc(g.goal)}</h3><div class="n">${g.docs} posts</div><ol>${g.top_stacks.slice(0, 4).map(s => `<li>${s.peptides.map(p => esc(p)).join(' + ')} <span class="goal">(${s.docs})</span></li>`).join('')}</ol></div>`).join('');
+
+  // ---- peptide table
+  let pepLimit = 20;
+  function renderPeps() {
+    const rows = data.peptides;
+    $('#peps tbody').innerHTML = rows.slice(0, pepLimit).map(p => {
+      const d = p.recent_30d - p.prior_30d;
+      return `<tr><td>${chip(p.name)}</td><td class="goal">${esc(p.category)}</td><td class="num">${p.docs}</td>
+      <td class="num ${d > 0 ? 'up' : ''}">${d > 0 ? '+' : ''}${d}</td>
+      <td class="num" title="${p.dose_samples} samples">${p.median_dose_mcg ? fmtDose(p.median_dose_mcg) : '—'}</td>
+      <td class="goal">${p.top_partners.slice(0, 3).map(([n, c]) => `${esc(n)} (${c})`).join(', ') || '—'}</td></tr>`;
+    }).join('');
+    $('#morePeps').style.display = rows.length > pepLimit ? '' : 'none';
+  }
+  $('#morePeps').onclick = () => { pepLimit += 20; renderPeps(); };
+  renderPeps();
+
+  // ---- feed
+  let feedLimit = 12;
+  function renderFeed() {
+    $('#feed').innerHTML = data.recent.slice(0, feedLimit).map(r => `<div class="post">
+      <div class="t"><a href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.title || r.snippet.slice(0, 80))}</a></div>
+      <div class="m">${r.source === 'reddit' ? 'r/' + esc(r.sub) : esc(r.source)} · ${ago(r.ts)}${r.score ? ` · ${r.score} pts` : ''}${r.goals.length ? ' · ' + r.goals.map(esc).join(', ') : ''}</div>
+      <div>${r.peptides.map(p => chip(p)).join('')}${r.blends.length ? `<span class="goal"> blend: ${r.blends.map(esc).join(', ')}</span>` : ''}</div>
+      <div class="s">${esc(r.snippet)}${r.snippet.length >= 280 ? '…' : ''}</div></div>`).join('');
+    $('#moreFeed').style.display = data.recent.length > feedLimit ? '' : 'none';
+  }
+  $('#moreFeed').onclick = () => { feedLimit += 12; renderFeed(); };
+  renderFeed();
+
+  $('#foot').innerHTML = `Subreddits covered: ${data.subreddits.map(([s, n]) => `r/${esc(s)} (${n})`).join(', ')}. Last run scanned ${data.run ? data.run.raw_seen.toLocaleString() : '?'} raw items and added ${data.run ? data.run.new_records : '?'} new. Source & scanner: <a href="https://github.com/sakzgupzzz/peptide-stacks-scanner">github.com/sakzgupzzz/peptide-stacks-scanner</a>.`;
+})();
+</script>
+</body>
+</html>

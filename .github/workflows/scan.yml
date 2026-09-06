@@ -1,0 +1,58 @@
+name: scan-and-deploy
+
+on:
+  schedule:
+    - cron: "17 6 * * *"   # daily 06:17 UTC
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Scan sources
+        env:
+          # Optional but strongly recommended: a Reddit "script" app (free) at https://www.reddit.com/prefs/apps
+          # Without these the scanner falls back to unauthenticated RSS feeds, which Reddit throttles/blocks on cloud IPs.
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+          REDDIT_USERNAME: ${{ secrets.REDDIT_USERNAME }}
+          REDDIT_PASSWORD: ${{ secrets.REDDIT_PASSWORD }}
+        run: python -m scanner.main
+        continue-on-error: true
+      - name: Rebuild data.json from corpus (in case scan aborted midway)
+        run: python -m scanner.main --aggregate-only
+      - name: Commit corpus + data
+        run: |
+          git config user.name "peptide-scanner-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add data/corpus.jsonl docs/data.json
+          if git diff --cached --quiet; then echo "no changes"; else git commit -m "data: scan $(date -u +%Y-%m-%d)" && git push; fi
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+
+  deploy:
+    needs: scan
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
